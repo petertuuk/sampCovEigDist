@@ -53,7 +53,7 @@ function sampCovEigDist(evweight, c, zvec2in=0)
   ielt = zeros(size(zvec2))
   intervalStarts99::Vector{Float64} = intervalStarts*.99
   intervalEnds101::Vector{Float64} = intervalEnds*1.01
-  @inbounds for iz in eachindex(zvec2)
+  for iz in eachindex(zvec2)
     for ii1 in eachindex(intervalStarts99)
       if zvec2[iz]>intervalStarts99[ii1]
         islt[iz] += 1
@@ -66,16 +66,16 @@ function sampCovEigDist(evweight, c, zvec2in=0)
 
   #Main Loop: loop over the domain
   zast::Float64 = 0
-  @inbounds for iz in eachindex(zvec2)
+  for iz in eachindex(zvec2)
     zast = zvec2[iz]
     if islt[iz]>ielt[iz]
 
       # Define the objective function and its derivative
-      @inline function mobj(m::Complex{Float64})
-        funcout = m + (zast-cumputeInteg(m))^-1
+      function mobj(m::Complex{Float64})
+        funcout = m + 1/(zast-cumputeInteg(m))
       end
-      @inline function mobjDiff(m::Complex{Float64})
-        funcout = 1 - cumputeIntegSq(m) * (zast-cumputeInteg(m))^-2.0
+      function mobjDiff(m::Complex{Float64})
+        funcout = 1 - cumputeIntegSq(m) / (zast-cumputeInteg(m))^2
       end
 
       # Make the guess using linear prediction from last two results
@@ -121,9 +121,7 @@ function newton(f::Function, df::Function, x0::Complex{Float64}, tol=1e-6, kmax=
   k::Int16 = 0;
   while ex > tol && k <= kmax
     k += 1
-    fx0 = f(x0)
-    dfx0 = df(x0)
-    x = x0 - fx0 / dfx0
+    x = x0 - f(x0) / df(x0)
     ex = abs( x - x0 )/abs(x)
     x0 = x
   end
@@ -133,6 +131,7 @@ end
 function trapz(x,y)
 # Trapezoid integration
   area = zeros(size(x))
+  lx = length(x)
   for i in 1:lx-1
     area[i+1] = area[i] + (x[i+1] - x[i]) * (y[i+1] + y[i]) * .5
   end
@@ -158,7 +157,7 @@ function makeIntegralFuncs(evweight)
 
   uh::Array{Float64,1} = ut.*ht;
   uhSq::Array{Float64,1} = (ut.^2) .* ht;
-  @inbounds @inline function cumputeInteg(mbar)
+  function cumputeInteg(mbar)
     funcsum::Complex{Float64} = 0
     @inbounds for ii2 in eachindex(ut)
       funcsum += uh[ii2]/(1+ut[ii2]*mbar);
@@ -166,7 +165,7 @@ function makeIntegralFuncs(evweight)
     funcsum *= c
     return funcsum
   end
-  @inbounds @inline function cumputeIntegSq(mbar)
+  function cumputeIntegSq(mbar)
     funcsum::Complex{Float64} = 0
     @inbounds for ii3 in eachindex(ut)
       funcsum += uhSq[ii3]/(1+ut[ii3]*mbar)^2;
@@ -184,7 +183,7 @@ function getIntervals(nMbar,evweight,cumputeInteg)
   mbarvec = makeMbarVec(evweight,nMbar)
 
   zvec = zeros(size(mbarvec))
-  for i1 in eachindex(mbarvec)
+  @simd for i1 in eachindex(mbarvec)
     mbar = mbarvec[i1];
     zvec[i1] = -1/mbar + cumputeInteg(mbar);
   end

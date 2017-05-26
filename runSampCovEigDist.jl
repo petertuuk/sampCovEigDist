@@ -1,5 +1,5 @@
 ## Setup
-include("getDensity.jl")
+include("sampCovEigDist.jl")
 
 ## Calc/Plot
 const c = .5
