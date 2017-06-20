@@ -22,7 +22,7 @@ function sampCovEigDist(evweight, c, zvec2in=0)
   nZvec = 5000
 
   evweight[:,1] = evweight[:,1]/sum(evweight[:,1])
-  evweight = round(evweight,6);
+  evweight = round.(evweight,6);
 
   #generate functions to compute common integrals
   cumputeInteg,cumputeIntegSq = makeIntegralFuncs(evweight)
