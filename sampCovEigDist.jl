@@ -40,17 +40,17 @@ function sampCovEigDist(evweight, c, zvec2in=0)
     zvec2 = zvec2[2:end];
   end
 
-  density = zeros(nZvec);
+  density = fill(0.0,nZvec);
   wentBadly = false
-  guess0 = -5 + 10.0im
+  guess0 = -5.0 + 10.0im
   guess = 0.0im
   fminres = 0.0im
   fminresOld = 0.0im
   cfact = 1/min(c,1)/pi
 
   # Calculate which points in eigenvalue sample space are in the support
-  islt = zeros(size(zvec2))
-  ielt = zeros(size(zvec2))
+  islt = fill(0.0,size(zvec2))
+  ielt = fill(0.0,size(zvec2))
   intervalStarts99::Vector{Float64} = intervalStarts*.99
   intervalEnds101::Vector{Float64} = intervalEnds*1.01
   for iz in eachindex(zvec2)
@@ -68,19 +68,19 @@ function sampCovEigDist(evweight, c, zvec2in=0)
   zast::Float64 = 0
   for iz in eachindex(zvec2)
     zast = zvec2[iz]
-    if islt[iz]>ielt[iz]
+    if islt[iz] > ielt[iz]
 
       # Define the objective function and its derivative
-      function mobj(m::Complex{Float64})
-        funcout = m + 1/(zast-cumputeInteg(m))
+      @inline function mobj(m::Complex{Float64})
+        m + 1/( zast - cumputeInteg(m) )
       end
-      function mobjDiff(m::Complex{Float64})
-        funcout = 1 - cumputeIntegSq(m) / (zast-cumputeInteg(m))^2
+      @inline function mobjDiff(m::Complex{Float64})
+        1 - cumputeIntegSq(m) / ( zast - cumputeInteg(m) )^2
       end
 
       # Make the guess using linear prediction from last two results
-      if !wentBadly && imag(fminres)>1e-8
-        guess = fminres+fminres-fminresOld
+      if !wentBadly && imag(fminres) > 1e-8
+        guess = fminres + fminres - fminresOld
       else
         guess = guess0
       end
@@ -88,7 +88,7 @@ function sampCovEigDist(evweight, c, zvec2in=0)
       # Perform the optimization to find the density at this point
       fminresOld = fminres
       fminres = newton(mobj, mobjDiff, guess);
-      density[iz] = abs(imag(fminres))*cfact
+      density[iz] = abs(imag(fminres)) * cfact
 
       # Check the result to ensure consistency
       z_recalc = -1/fminres + cumputeInteg(fminres);
@@ -112,17 +112,15 @@ function sampCovEigDist(evweight, c, zvec2in=0)
   return density, zvec2, cdf
 end
 
-function newton(f::Function, df::Function, x0::Complex{Float64}, tol=1e-6, kmax=100)
+@inline function newton(f::Function, df::Function, x0::Complex{Float64}, tol=1e-6, kmax=100)
 # Textbook Newton solver
   x::Complex{Float64} = 0.0
-  fx0::Complex{Float64} = 0.0
-  dfx0::Complex{Float64} = 0.0
-  ex::Float64 = tol + 1
+  ex = tol + 1.0
   k::Int16 = 0;
   while ex > tol && k <= kmax
     k += 1
-    x = x0 - f(x0) / df(x0)
-    ex = abs( x - x0 )/abs(x)
+    x  = x0 - f(x0) / df(x0)
+    ex = abs(x - x0) / abs(x)
     x0 = x
   end
   return x
@@ -130,7 +128,7 @@ end
 
 function trapz(x,y)
 # Trapezoid integration
-  area = zeros(size(x))
+  area = fill(0.0,size(x))
   lx = length(x)
   for i in 1:lx-1
     area[i+1] = area[i] + (x[i+1] - x[i]) * (y[i+1] + y[i]) * .5
@@ -149,7 +147,7 @@ function makeIntegralFuncs(evweight)
 # Generate the functions that will compute commonly used integral and
 # its partial derivative
   ut::Array{Float64,1} = unique(evweight[:,2]);
-  ht::Array{Float64,1} = zeros(size(ut))
+  ht::Array{Float64,1} = fill(0.0,size(ut))
   for iu in eachindex(ut)
     ixEv = evweight[:,2].== ut[iu]
     ht[iu] = sum(evweight[ixEv,1])
@@ -157,7 +155,8 @@ function makeIntegralFuncs(evweight)
 
   uh::Array{Float64,1} = ut.*ht;
   uhSq::Array{Float64,1} = (ut.^2) .* ht;
-  function cumputeInteg(mbar)
+  # uhSq::Array{Float64,1} = ut .* ut .* ht;
+  @inline function cumputeInteg(mbar)
     funcsum::Complex{Float64} = 0
     @inbounds for ii2 in eachindex(ut)
       funcsum += uh[ii2]/(1+ut[ii2]*mbar);
@@ -165,7 +164,7 @@ function makeIntegralFuncs(evweight)
     funcsum *= c
     return funcsum
   end
-  function cumputeIntegSq(mbar)
+  @inline function cumputeIntegSq(mbar)
     funcsum::Complex{Float64} = 0
     @inbounds for ii3 in eachindex(ut)
       funcsum += uhSq[ii3]/(1+ut[ii3]*mbar)^2;
@@ -182,13 +181,13 @@ function getIntervals(nMbar,evweight,cumputeInteg)
 # the spectral distribution will have non-zero mass
   mbarvec = makeMbarVec(evweight,nMbar)
 
-  zvec = zeros(size(mbarvec))
+  zvec = fill(0.0,size(mbarvec))
   @simd for i1 in eachindex(mbarvec)
     mbar = mbarvec[i1];
     zvec[i1] = -1/mbar + cumputeInteg(mbar);
   end
 
-  eigInds::Array{Int32,1} = zeros(size(evweight,1))
+  eigInds::Array{Int32,1} = fill(0.0,size(evweight,1))
   evDiff = 0.0
   for uu in 1:size(evweight,1)
     evInv::Float64 = -1/evweight[uu,2]
