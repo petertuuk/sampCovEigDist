@@ -8,24 +8,18 @@ const c = .5
 ## Calc/Plot
 doPlot = true
 if doPlot
-    density, zvec, cdf = sampCovEigDist(evweight,c)
+    density1, zvec, cdf = sampCovEigDist(evweight,c)
     evweight2 = [.8 1;.1 4;.1 10];
     density2, zvec2, cdf2  = sampCovEigDist(evweight2,c,zvec)
     density3, zvec3, cdf3  = sampCovEigDist([1 1],c,zvec)
+
     using PyPlot
-    doLog = true
-    if doLog
-      semilogy(zvec,density)
-      semilogy(zvec,density2)
-      semilogy(zvec,density3)
-      ylim(1e-3, 10)
-    else
-      plot(zvec,density)
-      plot(zvec,density2)
-      plot(zvec,density3)
-    end
+    loglog(zvec,density1)
+    loglog(zvec,density2)
+    loglog(zvec,density3)
+    ylim((1e-3,10))
+    xlim((.07,100))
     show()
-    # Time
 end
 
 sampCovEigDist(evweight,c)
