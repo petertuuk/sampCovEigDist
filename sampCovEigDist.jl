@@ -18,11 +18,17 @@ function sampCovEigDist(evweight, c, zvec2in=0)
 #      Ann. Prob., 26 (1), 316-345.
 #      https://projecteuclid.org/euclid.aop/1022855421
 
+  v = VERSION
+
   nMbar = 5000 # sufficient for most
   nZvec = 5000
 
-  evweight[:,1] = evweight[:,1]/sum(evweight[:,1])
-  evweight = round.(evweight,6);
+  evweight[:,1] = evweight[:,1]./sum(evweight[:,1])
+  if v.major>0 || v.minor>6
+    evweight = round.(evweight,digits=6)
+  else
+    evweight = round.(evweight,6)
+  end
 
   #generate functions to compute common integrals
   cumputeInteg,cumputeIntegSq = makeIntegralFuncs(evweight)
@@ -36,7 +42,12 @@ function sampCovEigDist(evweight, c, zvec2in=0)
     nZvec = length(zvec2)
   else
     ll = 3;
-    zvec2 = linspace(0,(1.01*intervalEnds[end]).^(1/ll),nZvec+1).^ll;
+
+    if v >= v"0.7"
+      zvec2 = range(0,stop=(1.01*intervalEnds[end]).^(1/ll),length=nZvec+1).^ll
+    else
+      zvec2 = linspace(0,(1.01*intervalEnds[end]).^(1/ll),nZvec+1).^ll
+    end
     zvec2 = zvec2[2:end];
   end
 
@@ -139,7 +150,11 @@ end
 function makeMbarVec(evweight,nMbar)
   startm = min(log10(1/maximum(evweight[:,2])/10),-3)
   endm = max(-log10(1/minimum(evweight[:,2])),3)
-  mbarvecHalf = logspace(startm,endm,Int(nMbar/2))
+  if v.major>0 || v.minor>6
+    mbarvecHalf = 10 .^ range(startm,stop=endm,length=Int(nMbar/2))
+  else
+    mbarvecHalf = logspace(startm,endm,Int(nMbar/2))
+  end
   mbarvec = sort([-mbarvecHalf;mbarvecHalf])
 end
 
@@ -206,18 +221,27 @@ function getIntervals(nMbar,evweight,cumputeInteg)
 
   diffzvec = diff(zvec)
   picks = diffzvec .> 0
-  picks[isPeak-1] = false
-  picks[isPeak] = false
-  picks[isPeak+1] = false
+  picks[isPeak.-1] .= false
+  picks[isPeak] .= false
+  picks[isPeak.+1] .= false
 
-  findPicks = find(picks)
-
-  dfpUp = find(diff([-Inf;findPicks]).>1)
-  dfpDown = find(diff([findPicks;Inf]).>1)
+  if v >= v"0.7"
+    findPicks = findall(picks)
+    dfpUp = findall(diff([-Inf;findPicks]).>1)
+    dfpDown = findall(diff([findPicks;Inf]).>1)
+  else
+    findPicks = find(picks)
+    dfpUp = find(diff([-Inf;findPicks]).>1)
+    dfpDown = find(diff([findPicks;Inf]).>1)
+  end
 
   zvs = zvec[findPicks[dfpUp]]
   zve = zvec[findPicks[dfpDown]]
-  complementOfSupport = sort([zvs zve],1);
+  if v >= v"0.7"
+    complementOfSupport = sort([zvs zve],dims=1)
+  else
+    complementOfSupport = sort([zvs zve],1)
+  end
   intervalStarts = complementOfSupport[1:end-1,2];
   intervalEnds = complementOfSupport[2:end,1];
   if length(intervalStarts)>0
@@ -229,7 +253,7 @@ function getIntervals(nMbar,evweight,cumputeInteg)
     end
   end
 
-  intervalStarts[intervalStarts.<0]=0;
+  intervalStarts[intervalStarts.<0] .= 0;
 
   if any( intervalStarts[2:end] .<= intervalEnds[1:end-1] )
     dse = intervalStarts[2:end] - intervalEnds[1:end-1]

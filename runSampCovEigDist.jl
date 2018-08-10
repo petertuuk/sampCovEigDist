@@ -1,7 +1,15 @@
 ## Setup
+v = VERSION
+if v >= v"0.7"
+    using LinearAlgebra
+end
 include("sampCovEigDist.jl")
+if v >= v"0.7"
+    ee = range(5,stop=75,length=400)
+else
+    ee = linspace(5,75,400)
+end
 
-ee = linspace(5,75,400)
 evweight = [2*length(ee) 1;[fill(1.0,length(ee)) ee]]
 const c = .5
 
@@ -13,20 +21,24 @@ if doPlot
     density2, zvec2, cdf2  = sampCovEigDist(evweight2,c,zvec)
     density3, zvec3, cdf3  = sampCovEigDist([1 1],c,zvec)
 
-    using PyPlot
-    loglog(zvec,density1)
-    loglog(zvec,density2)
-    loglog(zvec,density3)
-    ylim((1e-3,10))
-    xlim((.07,100))
-    show()
+    using Plots;gr();
+    plot(zvec,density1,xscale=:log10,yscale=:log10)
+    plot!(zvec,density2)
+    plot!(zvec,density3, ylims=(1e-3,10), xlims=(.07,100))
+    gui()
+    # closeall()
 end
 
 sampCovEigDist(evweight,c)
 
-@time sampCovEigDist(evweight,c)
+using BenchmarkTools
+@btime sampCovEigDist(evweight,c)
 
 ## profile
+v = VERSION
+if v >= v"0.7"
+    using Profile
+end
 Profile.init()
 Profile.clear_malloc_data
 Profile.clear()
