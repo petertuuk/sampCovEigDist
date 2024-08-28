@@ -4,49 +4,33 @@ if v >= v"0.7"
     using LinearAlgebra
 end
 include("sampCovEigDist.jl")
-if v >= v"0.7"
-    ee = range(5, stop=75, length=400)
-else
-    ee = linspace(5, 75, 400)
-end
 
-evweight = [2*length(ee) 1; [fill(1.0,length(ee)) ee]]
-const c = .5
+import DelimitedFiles, Plots, BenchmarkTools
 
-## Calc/Plot
-doPlot = true
-if doPlot
-    density1, zvec, cdf = sampCovEigDist(evweight, c)
-    evweight2 = [.8 1; .1 4; .1 10];
-    density2, zvec2, cdf2  = sampCovEigDist(evweight2, c, zvec)
-    evweight3 = [1 1]
-    density3, zvec3, cdf3  = sampCovEigDist(evweight3, c, zvec)
+# Calculate Test Case
+c = .1
+evweight = [.2 1; .4 3; .4 10];
+density, zvec, cdf  = sampCovEigDist(evweight, c)
 
-    using Plots;pyplot();
-    plot( zvec, density1 .+ 1e-16)
-    plot!(zvec, density2 .+ 1e-16)
-    plot!(zvec, density3 .+ 1e-16, ylims=(1e-3,10), xlims=(.07,100), xscale=:log10, yscale=:log10)
-    gui()
-end
+# Compare Result to Exepected Result
+expected_density = DelimitedFiles.readdlm("expected_density.csv", ',', Any, '\n')
+Plots.plot(expected_density[:,1], expected_density[:,2],linewidth=4,label="Expected Density")
+Plots.plot!(zvec, density,ylims=(0,.5), xlims=(0,15),linewidth=2,label="Calculated Density")
+Plots.xlabel!("Eigenvalue Magnitude")
+Plots.ylabel!("Eigenvalue Distribution Density")
+Plots.gui()
 
-sampCovEigDist(evweight, c)
-
-using BenchmarkTools
-@btime sampCovEigDist(evweight, c)
+BenchmarkTools.@btime sampCovEigDist(evweight, c)
 
 ## profile
-v = VERSION
-if v >= v"0.7"
-    using Profile
-end
-Profile.init()
-Profile.clear()
-@profile sampCovEigDist(evweight, c)
-f = open("profile.prof", "w")
-Profile.print(f)
-close(f)
-# using ProfileView
-# ProfileView.view()
-
-Profile.clear_malloc_data()
-sampCovEigDist(evweight, c)
+# v = VERSION
+# if v >= v"0.7"
+#     using Profile
+# end
+# Profile.init()
+# Profile.clear()
+# @profile sampCovEigDist(evweight, c)
+# f = open("profile.prof", "w")
+# Profile.print(f)
+# close(f)
+# Profile.clear_malloc_data()
