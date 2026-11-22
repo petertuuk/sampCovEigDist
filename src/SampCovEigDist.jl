@@ -68,7 +68,6 @@ function sampCovEigDist(evweight::AbstractMatrix{<:Real}, c::Real, zvec_in=nothi
     inSupport = [count(<(z), starts99) > count(<(z), ends101) for z in zvec]
 
     # Main loop: solve the Silverstein equation for the Stieltjes transform at each z
-    guess0 = complex(-5.0, 10.0)
     fminres = zero(ComplexF64)
     fminresOld = zero(ComplexF64)
     wentBadly = false
@@ -77,22 +76,38 @@ function sampCovEigDist(evweight::AbstractMatrix{<:Real}, c::Real, zvec_in=nothi
     for iz in eachindex(zvec)
         inSupport[iz] || continue
         z = zvec[iz]
+        zResid(m) = abs(-1 / m + integ(spec, m) - z)
+        converged(r) = !(r > 1e-3 && r / abs(z) > 1e-3)
 
-        # guess using linear prediction from the last two results
-        guess = (!wentBadly && imag(fminres) > 1e-8) ? 2fminres - fminresOld : guess0
+        # First try linear prediction from the last two results. If there is no
+        # usable prediction, or it fails, fall back to starting points scaled to z
+        # (the solution m is roughly of size 1/z), then the original fixed guess.
+        guesses = ComplexF64[]
+        !wentBadly && imag(fminres) > 1e-8 && push!(guesses, 2fminres - fminresOld)
+        append!(guesses, [complex(-1 / z, 1 / z), complex(-1 / z, 10 / z),
+                          complex(-1 / z, 0.1 / z), complex(-5.0, 10.0)])
 
         fminresOld = fminres
-        fminres = solveStieltjes(spec, z, guess)
-        density[iz] = abs(imag(fminres)) * cfact
+        best, bestResid = zero(ComplexF64), Inf
+        for g in guesses
+            m = solveStieltjes(spec, z, g)
+            # m and conj(m) both solve the equation at real z; keep the
+            # upper half-plane branch, which is the Stieltjes transform
+            m = imag(m) < 0 ? conj(m) : m
+            r = zResid(m)
+            if r < bestResid
+                best, bestResid = m, r
+            end
+            converged(r) && break
+        end
+        fminres = best
+        # an imaginary part at round-off level relative to |m| means zero density
+        density[iz] = imag(fminres) > 1e-9 * abs(fminres) ? imag(fminres) * cfact : 0.0
 
-        # check the result by mapping back to z
-        zResid = abs(-1 / fminres + integ(spec, fminres) - z)
-        if zResid > 1e-3 && zResid / abs(z) > 1e-3
-            wentBadly = true
+        wentBadly = !converged(bestResid)
+        if wentBadly
             nBad += 1
-            worstResid = max(worstResid, zResid / abs(z))
-        else
-            wentBadly = false
+            worstResid = max(worstResid, bestResid / abs(z))
         end
     end
     if nBad > 0

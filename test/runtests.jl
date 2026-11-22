@@ -109,6 +109,19 @@ end
         @test_throws ArgumentError sampCovEigDist([1.0 1.0], 0)
     end
 
+    @testset "wide STAP-like spectrum converges everywhere" begin
+        # Eigenvalues of a simulated STAP interference covariance (clutter, jammer,
+        # narrowband RFI and noise), spanning about 53 dB. The solver used to fail
+        # at two points here: a fixed starting guess was badly scaled for large z.
+        λ = vec(readdlm(joinpath(@__DIR__, "stap_eigenvalues.csv"), Float64))
+        c = 0.5
+        z = exp.(range(log(minimum(λ) * (1 - sqrt(c))^2 / 2), log(maximum(λ) * (1 + sqrt(c))^2 * 2), length=4000))
+        ew = [fill(1 / length(λ), length(λ)) λ]
+        density, zvec, cdf = @test_logs min_level = Base.CoreLogging.Warn sampCovEigDist(ew, c, z)
+        @test isapprox(sum(diff(zvec) .* (density[1:end-1] .+ density[2:end]) ./ 2), 1, atol=0.01)
+        @test all(density .>= 0)
+    end
+
     @testset "many-eigenvalue example (overlapping intervals)" begin
         ee = range(5, stop=75, length=400)
         ew = [2 * length(ee) 1; [fill(1.0, length(ee)) ee]]
