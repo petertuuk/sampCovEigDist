@@ -1,0 +1,7 @@
+name = "SampCovEigDist"
+uuid = "ac084d2f-a9ba-4ef3-8b40-de4d225a9975"
+authors = ["Peter Tuuk"]
+version = "1.0.0"
+
+[compat]
+julia = "1.6"
