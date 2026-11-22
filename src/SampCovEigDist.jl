@@ -82,15 +82,14 @@ function sampCovEigDist(evweight::AbstractMatrix{<:Real}, c::Real, zvec_in=nothi
         # First try linear prediction from the last two results. If there is no
         # usable prediction, or it fails, fall back to starting points scaled to z
         # (the solution m is roughly of size 1/z), then the original fixed guess.
-        guesses = ComplexF64[]
-        !wentBadly && imag(fminres) > 1e-8 && push!(guesses, 2fminres - fminresOld)
-        append!(guesses, [complex(-1 / z, 1 / z), complex(-1 / z, 10 / z),
-                          complex(-1 / z, 0.1 / z), complex(-5.0, 10.0)])
+        guesses = (2fminres - fminresOld, complex(-1 / z, 1 / z), complex(-1 / z, 10 / z),
+                   complex(-1 / z, 0.1 / z), complex(-5.0, 10.0))
+        first = !wentBadly && imag(fminres) > 1e-8 ? 1 : 2
 
         fminresOld = fminres
         best, bestResid = zero(ComplexF64), Inf
-        for g in guesses
-            m = solveStieltjes(spec, z, g)
+        for k in first:length(guesses)
+            m = solveStieltjes(spec, z, guesses[k])
             # m and conj(m) both solve the equation at real z; keep the
             # upper half-plane branch, which is the Stieltjes transform
             m = imag(m) < 0 ? conj(m) : m
@@ -143,6 +142,12 @@ function PopulationSpectrum(evweight::AbstractMatrix{<:Real}, c::Real)
     return PopulationSpectrum(t, t .* h, t .^ 2 .* h, Float64(c))
 end
 
+# The sums below are the hot loops (every Newton step, every support-tracing
+# point). They are written in real arithmetic, 1/w = conj(w)/|w|², rather than
+# with Julia's overflow-safe complex division, which is several times slower and
+# keeps the loops from vectorizing. |w|² = |1 + tm|² cannot overflow for any
+# eigenvalue spread met in practice.
+
 "c * ∫ t / (1 + t m) dH(t)"
 @inline function integ(s::PopulationSpectrum, m)
     acc = zero(complex(float(typeof(m))))
@@ -152,16 +157,46 @@ end
     return s.c * acc
 end
 
+@inline function integ(s::PopulationSpectrum, m::ComplexF64)
+    mr, mi = reim(m)
+    ar = ai = 0.0
+    @inbounds @simd for i in eachindex(s.t)
+        t = s.t[i]
+        wr = 1 + t * mr
+        wi = t * mi
+        q = s.th[i] / (wr * wr + wi * wi)
+        ar += q * wr
+        ai -= q * wi
+    end
+    return s.c * complex(ar, ai)
+end
+
+# real m: used to trace z(m) along the real axis
+@inline function integ(s::PopulationSpectrum, m::Float64)
+    acc = 0.0
+    @inbounds @simd for i in eachindex(s.t)
+        acc += s.th[i] / (1 + s.t[i] * m)
+    end
+    return s.c * acc
+end
+
 "Both c ∫ t/(1+tm) dH and c ∫ t²/(1+tm)² dH in one pass."
 @inline function integPair(s::PopulationSpectrum, m::ComplexF64)
-    a = zero(ComplexF64)
-    b = zero(ComplexF64)
-    @inbounds for i in eachindex(s.t)
-        r = 1 / (1 + s.t[i] * m)
-        a += s.th[i] * r
-        b += s.t2h[i] * r * r
+    mr, mi = reim(m)
+    ar = ai = br = bi = 0.0
+    @inbounds @simd for i in eachindex(s.t)
+        t = s.t[i]
+        wr = 1 + t * mr
+        wi = t * mi
+        d = 1 / (wr * wr + wi * wi)
+        rr = wr * d                       # r = 1/(1 + tm)
+        ri = -wi * d
+        ar += s.th[i] * rr
+        ai += s.th[i] * ri
+        br += s.t2h[i] * (rr * rr - ri * ri)
+        bi += s.t2h[i] * (2 * rr * ri)
     end
-    return s.c * a, s.c * b
+    return s.c * complex(ar, ai), s.c * complex(br, bi)
 end
 
 """
@@ -197,7 +232,7 @@ function makeMbarVec(t::Vector{Float64}, nMbar::Integer)
     startm = min(log10(1 / maximum(t) / 10), -3)
     endm = max(log10(minimum(t)), 3)
     half = 10 .^ range(startm, stop=endm, length=nMbar ÷ 2)
-    return sort([-half; half])
+    return [-reverse(half); half]          # already ascending: same as sort([-half; half])
 end
 
 "Index of the element of sorted vector `v` nearest to `x`."
